@@ -1,115 +1,108 @@
-﻿using System.Reflection;
-using CollectiveAI.Models;
+﻿using CollectiveAI.Attributes;
+using CollectiveAI.Interfaces;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+using System.Reflection;
 
-namespace CollectiveAI.Factories;
-
-public class TeamConfiguration
+namespace CollectiveAI.Factories
 {
-    public string Name { get; set; } = string.Empty;
-    public List<AgentConfiguration> Agents { get; set; } = [];
-}
-
-public static class AgentBuilder
-{
-    public static Dictionary<string, ChatCompletionAgent> CreateAgents(Kernel kernel, IConfiguration configuration,
-        string teamName = null)
+    public static class AgentBuilder
     {
-        // Get teams configuration section
-        var teamsConfig = configuration.GetSection("Teams");
-        var teamConfigurations = new List<TeamConfiguration>();
-
-        // Bind configuration to strongly typed objects
-        teamsConfig.Bind(teamConfigurations);
-
-        if (!teamConfigurations.Any()) throw new InvalidOperationException("No teams configured in app settings");
-
-        // Get the specified team or the first team if no name provided
-        TeamConfiguration teamConfig;
-        if (string.IsNullOrEmpty(teamName))
+        /// <summary>
+        /// Creates all teams by discovering classes that implement IAgentTeam and have the Team attribute
+        /// </summary>
+        /// <param name="kernel">The semantic kernel instance</param>
+        /// <param name="configuration">Configuration (for backward compatibility, can be null)</param>
+        /// <returns>Dictionary of team name to agents</returns>
+        public static Dictionary<string, Dictionary<string, ChatCompletionAgent>> CreateAllTeams(
+            Kernel kernel,
+            IConfiguration? configuration = null)
         {
-            teamConfig = teamConfigurations.First();
-        }
-        else
-        {
-            teamConfig =
-                teamConfigurations.FirstOrDefault(t => t.Name.Equals(teamName, StringComparison.OrdinalIgnoreCase));
-            if (teamConfig == null)
-                throw new InvalidOperationException($"Team '{teamName}' not found in configuration");
-        }
+            var teams = new Dictionary<string, Dictionary<string, ChatCompletionAgent>>();
 
-        var agents = new Dictionary<string, ChatCompletionAgent>();
+            // Get all types that implement IAgentTeam
+            var agentTeamTypes = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(assembly => assembly.GetTypes())
+                .Where(type => typeof(IAgentTeam).IsAssignableFrom(type)
+                              && !type.IsInterface
+                              && !type.IsAbstract)
+                .ToList();
 
-        foreach (var agentConfig in teamConfig.Agents)
-        {
-            // Clone kernel for each agent
-            var agentKernel = kernel.Clone();
-
-            // Add plugins based on configuration using reflection
-            foreach (var pluginName in agentConfig.Plugins)
+            foreach (var teamType in agentTeamTypes)
             {
-                // Attempt to find and instantiate plugin class
-                var assembly = Assembly.GetExecutingAssembly();
-                var pluginType = assembly.GetTypes()
-                    .FirstOrDefault(t => t.Name.Equals($"{pluginName}Plugin", StringComparison.OrdinalIgnoreCase) ||
-                                         t.Name.Equals(pluginName, StringComparison.OrdinalIgnoreCase));
-
-                if (pluginType != null)
+                var teamAttribute = teamType.GetCustomAttribute<TeamAttribute>();
+                if (teamAttribute == null)
                 {
-                    var pluginInstance = Activator.CreateInstance(pluginType);
-                    if (pluginInstance != null)
-                        agentKernel.Plugins.AddFromObject(pluginInstance);
-                    else
-                        throw new InvalidOperationException($"Unable to instantiate plugin: {pluginName}");
+                    throw new InvalidOperationException(
+                        $"Agent team class {teamType.Name} must have a [Team] attribute");
                 }
-                else
+
+                var teamName = teamAttribute.Name;
+                var agents = CreateTeamAgents(teamType, kernel);
+
+                if (agents.Any())
                 {
-                    throw new InvalidOperationException($"Plugin type not found: {pluginName}");
+                    teams[teamName] = agents;
                 }
             }
 
-            // Create the agent
-            var agent = new ChatCompletionAgent
-            {
-                Name = agentConfig.Name,
-                Description = agentConfig.Description,
-                Instructions = agentConfig.Instructions,
-                Kernel = agentKernel,
-                Arguments = new KernelArguments(new OpenAIPromptExecutionSettings
-                {
-                    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-                })
-            };
-
-            // Add agent to dictionary
-            agents[agentConfig.Name] = agent;
+            return teams;
         }
 
-        return agents;
-    }
-
-    public static Dictionary<string, Dictionary<string, ChatCompletionAgent>> CreateAllTeams(Kernel kernel,
-        IConfiguration configuration)
-    {
-        // Get teams configuration section
-        var teamsConfig = configuration.GetSection("Teams");
-        var teamConfigurations = new List<TeamConfiguration>();
-
-        // Bind configuration to strongly typed objects
-        teamsConfig.Bind(teamConfigurations);
-
-        if (!teamConfigurations.Any()) throw new InvalidOperationException("No teams configured in app settings");
-
-        var allTeams = new Dictionary<string, Dictionary<string, ChatCompletionAgent>>();
-
-        foreach (var teamConfig in teamConfigurations)
+        /// <summary>
+        /// Creates all agents for a specific team by calling methods marked with [Agent] attribute
+        /// </summary>
+        /// <param name="teamType">The team class type</param>
+        /// <param name="kernel">The semantic kernel instance</param>
+        /// <returns>Dictionary of agent name to ChatCompletionAgent</returns>
+        private static Dictionary<string, ChatCompletionAgent> CreateTeamAgents(Type teamType, Kernel kernel)
         {
-            var teamAgents = CreateAgents(kernel, configuration, teamConfig.Name);
-            allTeams[teamConfig.Name] = teamAgents;
+            var agents = new Dictionary<string, ChatCompletionAgent>();
+
+            var teamInstance = CreateTeamInstance(teamType, kernel);
+
+            var agentMethods = teamType.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
+                .Where(method => method.GetCustomAttribute<AgentAttribute>() != null)
+                .ToList();
+
+            foreach (var method in agentMethods)
+            {
+                try
+                {
+                    var agent = (ChatCompletionAgent)method.Invoke(teamInstance, new object[] { kernel })!;
+                    agents[agent.Name!] = agent;
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to create agent from method {teamType.Name}.{method.Name}: {ex.Message}", ex);
+                }
+            }
+
+            return agents;
         }
 
-        return allTeams;
+        /// <summary>
+        /// Creates an instance of the team class
+        /// </summary>
+        private static IAgentTeam CreateTeamInstance(Type teamType, Kernel kernel)
+        {
+            // Look for a parameterless constructor
+            var defaultConstructor = teamType.GetConstructor(Type.EmptyTypes);
+            if (defaultConstructor != null)
+            {
+                return (IAgentTeam)Activator.CreateInstance(teamType)!;
+            }
+
+            // Look for a constructor that takes a Kernel parameter (for backward compatibility)
+            var constructorWithKernel = teamType.GetConstructor(new[] { typeof(Kernel) });
+            if (constructorWithKernel != null)
+            {
+                return (IAgentTeam)Activator.CreateInstance(teamType, kernel)!;
+            }
+
+            throw new InvalidOperationException(
+                $"Team class {teamType.Name} must have either a parameterless constructor or a constructor that takes Kernel parameter");
+        }
     }
 }
