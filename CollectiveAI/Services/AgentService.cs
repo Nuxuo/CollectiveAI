@@ -1,6 +1,7 @@
 ﻿// Services/AgentService.cs
 using CollectiveAI.Agents;
 using CollectiveAI.Managers;
+using CollectiveAI.Monitors;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Agents.Orchestration.GroupChat;
@@ -43,14 +44,17 @@ public class AgentService : IAgentService
         try
         {
             _logger?.LogInformation("Starting finance team discussion on: {Topic}", input);
+            DetailedOrchestrationMonitor monitor = new();
 
-            // Create orchestration
             var orchestration = new GroupChatOrchestration(
                 new AiGroupChatManager(input, _kernel.GetRequiredService<IChatCompletionService>())
                 {
                     MaximumInvocationCount = maxRounds
                 },
-                _agents);
+                _agents.ToArray())
+            {
+                ResponseCallback = monitor?.ResponseCallback
+            };
 
             // Start the runtime
             InProcessRuntime runtime = new();

@@ -1,4 +1,4 @@
-﻿using CollectiveAI.Plugins.Finance;
+﻿using CollectiveAI.Plugins;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.Connectors.OpenAI;

@@ -3,7 +3,7 @@ using System.ComponentModel;
 using Microsoft.SemanticKernel;
 using CollectiveAI.Services;
 
-namespace CollectiveAI.Plugins.Finance;
+namespace CollectiveAI.Plugins;
 
 // Market Discovery and Data Plugin - All from real APIs
 public class MarketDataPlugin
@@ -196,7 +196,7 @@ public class PortfolioPlugin
                 result += "Current Holdings:\n";
                 foreach (var position in summary.PositionValues.OrderByDescending(p => p.Value))
                 {
-                    var percentage = (position.Value / summary.TotalValue) * 100;
+                    var percentage = position.Value / summary.TotalValue * 100;
                     result += $"{position.Key}: ${position.Value:N0} ({percentage:F1}%)\n";
                 }
             }
@@ -241,7 +241,7 @@ public class PortfolioPlugin
                 var currentValue = position.Quantity * quote.Price;
                 var costBasis = position.Quantity * position.AveragePrice;
                 var gainLoss = currentValue - costBasis;
-                var gainLossPercent = (gainLoss / costBasis) * 100;
+                var gainLossPercent = gainLoss / costBasis * 100;
 
                 result += $"\n{position.Symbol}:\n";
                 result += $"  Shares: {position.Quantity:N0} @ ${position.AveragePrice:F2} avg cost\n";
@@ -312,7 +312,7 @@ public class PortfolioPlugin
             var riskAmount = summary.TotalValue * (decimal)(riskPercent / 100);
             var maxShares = Math.Floor(riskAmount / quote.Price);
             var positionValue = maxShares * quote.Price;
-            var portfolioPercent = (positionValue / summary.TotalValue) * 100;
+            var portfolioPercent = positionValue / summary.TotalValue * 100;
 
             Console.WriteLine($"[PortfolioPlugin] Calculated max shares: {maxShares}, position value: ${positionValue:N2}");
 
@@ -462,7 +462,7 @@ public class TradingPlugin
                 {
                     Console.WriteLine("[TradingPlugin] BUY trade is feasible");
                     result += $"✅ FEASIBLE - ${summary.CashBalance - totalValue:N2} cash remaining\n";
-                    result += $"Portfolio Impact: {(totalValue / summary.TotalValue) * 100:F1}% allocation";
+                    result += $"Portfolio Impact: {totalValue / summary.TotalValue * 100:F1}% allocation";
                 }
                 else
                 {
