@@ -28,9 +28,10 @@ public class AgentStoreService : IAgentStoreService
             // Create a scope to resolve the Kernel during construction
             using var scope = serviceProvider.CreateScope();
             var kernel = scope.ServiceProvider.GetRequiredService<Kernel>();
+            var stockSimulationService = scope.ServiceProvider.GetRequiredService<IStockSimulationService>();
 
             // Load all teams and agents at startup
-            _teams = AgentBuilder.CreateAllTeams(kernel, configuration);
+            _teams = AgentBuilder.CreateAllTeams(kernel, configuration, stockSimulationService);
 
             var teamCount = _teams.Count;
             var agentCount = _teams.SelectMany(t => t.Value).Count();

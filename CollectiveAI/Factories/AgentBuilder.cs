@@ -3,6 +3,7 @@ using CollectiveAI.Interfaces;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using System.Reflection;
+using CollectiveAI.Services;
 
 namespace CollectiveAI.Factories
 {
@@ -13,10 +14,12 @@ namespace CollectiveAI.Factories
         /// </summary>
         /// <param name="kernel">The semantic kernel instance</param>
         /// <param name="configuration">Configuration (for backward compatibility, can be null)</param>
+        /// <param name="stockSimulationService"></param>
         /// <returns>Dictionary of team name to agents</returns>
         public static Dictionary<string, Dictionary<string, ChatCompletionAgent>> CreateAllTeams(
             Kernel kernel,
-            IConfiguration? configuration = null)
+            IConfiguration? configuration = null,
+            IStockSimulationService? stockSimulationService = null)
         {
             var teams = new Dictionary<string, Dictionary<string, ChatCompletionAgent>>();
 
@@ -38,7 +41,7 @@ namespace CollectiveAI.Factories
                 }
 
                 var teamName = teamAttribute.Name;
-                var agents = CreateTeamAgents(teamType, kernel);
+                var agents = CreateTeamAgents(teamType, kernel, stockSimulationService);
 
                 if (agents.Any())
                 {
@@ -54,8 +57,9 @@ namespace CollectiveAI.Factories
         /// </summary>
         /// <param name="teamType">The team class type</param>
         /// <param name="kernel">The semantic kernel instance</param>
+        /// <param name="stockSimulationService"></param>
         /// <returns>Dictionary of agent name to ChatCompletionAgent</returns>
-        private static Dictionary<string, ChatCompletionAgent> CreateTeamAgents(Type teamType, Kernel kernel)
+        private static Dictionary<string, ChatCompletionAgent> CreateTeamAgents(Type teamType, Kernel kernel, IStockSimulationService stockSimulationService)
         {
             var agents = new Dictionary<string, ChatCompletionAgent>();
 
@@ -69,7 +73,7 @@ namespace CollectiveAI.Factories
             {
                 try
                 {
-                    var agent = (ChatCompletionAgent)method.Invoke(teamInstance, new object[] { kernel })!;
+                    var agent = (ChatCompletionAgent)method.Invoke(teamInstance, new object[] { kernel, stockSimulationService })!;
                     agents[agent.Name!] = agent;
                 }
                 catch (Exception ex)

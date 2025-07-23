@@ -11,34 +11,45 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "CollectiveAI API",
+        Title = "CollectiveAI Real Trading API",
         Version = "v1",
-        Description = "AI Team Discussion Service with Function-Enabled AgentFactory"
+        Description = "AI Team Discussions with Real-Time Stock Trading"
     });
 });
 
-builder.Services.AddHttpClient("CollectiveAI", client =>
+// Configure HttpClient for Yahoo Finance
+builder.Services.AddHttpClient("YahooFinance", client =>
 {
-    client.DefaultRequestHeaders.Add("User-Agent", "CollectiveAI/1.0");
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "SE-KE-AGENTS");
+    client.Timeout = TimeSpan.FromSeconds(10);
 });
 
+// Register Semantic Kernel
 builder.Services.AddSingleton<Kernel>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
     var kernelBuilder = Kernel.CreateBuilder();
 
     kernelBuilder.AddOpenAIChatCompletion(
-        configuration["OpenAI:ModelId"]!,
+        configuration["OpenAI:ModelId"] ?? "gpt-4",
         configuration["OpenAI:ApiKey"]!
     );
 
     var kernel = kernelBuilder.Build();
-
     return kernel;
 });
 
-builder.Services.AddScoped<IAgentTeamService, AgentTeamService>();
+// Register the Stock Trading Service as Singleton
+builder.Services.AddSingleton<IStockSimulationService>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient("YahooFinance");
+    var logger = sp.GetRequiredService<ILogger<StockSimulationService>>();
+
+    return new StockSimulationService(httpClient, logger);
+});
+
+// Register other services
 builder.Services.AddCollectiveAI();
 builder.Services.AddMemoryCache();
 
@@ -64,15 +75,21 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "CollectiveAI API v1"); });
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CollectiveAI Real Trading API v1");
+        c.RoutePrefix = string.Empty;
+    });
 }
 
 app.UseHttpsRedirection();
 
-if (app.Environment.IsDevelopment()) app.UseCors("AllowAll");
+if (app.Environment.IsDevelopment())
+    app.UseCors("AllowAll");
 
 app.UseAuthorization();
-
 app.MapControllers();
+
+await app.Services.InitializeAgentsAsync();
 
 app.Run();

@@ -45,7 +45,7 @@ public class AgentTeamService(Kernel kernel, IAgentStoreService agentStore, ILog
             // Run the orchestration
             var result = await orchestration.InvokeAsync(input, runtime, cancellationToken);
             var response =
-                await result.GetValueAsync(TimeSpan.FromSeconds(_resultTimeoutInSeconds * 15), cancellationToken);
+                await result.GetValueAsync(TimeSpan.FromSeconds(_resultTimeoutInSeconds * 60), cancellationToken);
 
             await runtime.RunUntilIdleAsync();
 

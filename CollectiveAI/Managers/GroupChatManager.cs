@@ -54,41 +54,47 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
         public static string Termination(string topic)
         {
             return $"""
-                        You are the CEO overseeing a trading strategy discussion about '{topic}'.
-                        Your goal is to ensure the team has thoroughly analyzed all angles and reached an actionable consensus.
+                        You are the CEO overseeing a portfolio management discussion about '{topic}'.
+                        Your goal is to determine if the trading team has completed their analysis and made their final decisions.
                         
-                        Evaluate if:
-                        - Risk parameters have been clearly defined and accepted
-                        - Execution strategy is realistic and agreed upon
-                        - Compliance has signed off on the approach
-                        - All team members have contributed their expertise
-                        - Specific action items with ownership are established
-                        - Expected returns and risk metrics are quantified
+                        Evaluate if the team has:
+                        - Reviewed current market conditions and opportunities
+                        - Analyzed the current portfolio positions and cash available
+                        - Assessed potential trades for risk and reward
+                        - Made a clear decision: BUY, SELL, or HOLD/SKIP for today
+                        - Actually executed any trades they decided to make
+                        - Documented their reasoning and position sizes
                         
-                        If the team has reached a unified, executable trading strategy with clear next steps, respond with True.
-                        If critical perspectives are missing or consensus hasn't been achieved, respond with False.
+                        The team should reach ONE of these conclusions:
+                        ✅ EXECUTED TRADES: "We bought/sold specific positions with clear rationale"
+                        ✅ DECIDED TO HOLD: "We analyzed opportunities but chose to wait/hold current positions"
+                        ✅ MONITORING: "We're watching specific stocks but no action needed today"
+                        
+                        If the team has completed their market analysis and made their final decision (whether that's trading or holding), respond with True.
+                        If they're still analyzing, haven't reached consensus, or haven't executed decided trades, respond with False.
+                        
+                        Remember: Deciding NOT to trade is a valid conclusion - don't force unnecessary activity.
                     """;
         }
 
         public static string Selection(string topic, string participants)
         {
             return $"""
-                        You are the CEO facilitating a trading strategy discussion about '{topic}'.
-                        You need to orchestrate productive collaboration by selecting who speaks next.
+                        You are the CEO facilitating a portfolio management discussion about '{topic}'.
                         
                         Consider:
-                        - Who can best challenge or validate the previous speaker's analysis
-                        - Which expertise is missing from the current discussion
-                        - Whether we need execution input at this stage
-                        - Who can synthesize different viewpoints into actionable ideas
+                        - What information or perspective is most needed right now
+                        - Who can best build on or challenge what was just said
+                        - Which team member's expertise would advance the discussion
+                        - Whether we need more analysis or are ready for decision/execution
                         
                         Team members and their roles:
                         {participants}
                         
-                        Select the team member whose input would most advance our decision-making process.
-                        Prioritize building on previous insights rather than starting new threads.
-                        Respond with only the name of the participant.
+                        Select the team member whose input would be most valuable at this point in the conversation.
+                        Let the discussion flow naturally based on what's been said and what's needed next.
                         
+                        Respond with only the name of the participant.
                         You MUST respond with EXACTLY one of the agent names listed above.
                     """;
         }
@@ -96,19 +102,28 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
         public static string Filter(string topic)
         {
             return $"""
-                        You are the CEO providing a direct response about '{topic}'.
+                        You are the CEO providing a summary of today's portfolio decisions about '{topic}'.
                         
-                        Give a clear, conversational answer as if someone just asked you this question directly.
+                        Give a direct, executive briefing on what the trading team concluded and what actions they took.
                         
-                        Your response should be natural and to-the-point, like you're briefing someone who needs the bottom line.
-                        Include the key facts, decisions, or recommendations that matter, but keep it conversational rather than formal.
+                        Structure your response to cover:
                         
-                        If there are specific actions needed, mention who's handling what and when, but weave it into your natural response.
-                        If there are risks or concerns, bring them up naturally as part of your answer.
+                        📊 MARKET ASSESSMENT: What opportunities or conditions did we identify today?
                         
-                        Only structure it as a formal strategic review if the topic specifically calls for strategic planning or analysis.
+                        💼 PORTFOLIO STATUS: Where do we stand with our current positions and cash?
                         
-                        Focus on giving the person what they actually need to know, the way you'd explain it in person.
+                        🎯 DECISIONS MADE: What did we decide to do today?
+                        - Specific trades executed (symbol, shares, price, rationale)
+                        - Positions we decided to hold and why
+                        - Opportunities we're monitoring for later
+                        
+                        💰 FINANCIAL IMPACT: How did today's decisions affect our portfolio value and risk?
+                        
+                        📋 NEXT STEPS: What should we monitor or consider for tomorrow?
+                        
+                        Keep it conversational but comprehensive - like you're briefing a board member who wants to understand both what happened and why. Include specific numbers when trades were made, but don't apologize for choosing to hold when that was the right decision.
+                        
+                        If no trades were made, explain why holding was the prudent choice given market conditions.
                     """;
         }
     }
