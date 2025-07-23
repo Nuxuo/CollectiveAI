@@ -5,10 +5,10 @@ namespace CollectiveAI.Controllers;
 
 [ApiController]
 [Route("api/chat")]
-public class ChatController(IAgentTeamService teamService, IAgentStoreService agentStore) : ControllerBase
+public class ChatController(IAgentService agentService) : ControllerBase
 {
     /// <summary>
-    ///     Start a discussion with the AI team and get the final summary result
+    /// Start a discussion with the AI finance team and get the final summary result
     /// </summary>
     /// <param name="request">The topic or question to discuss</param>
     /// <param name="maxRounds">Maximum number of discussion rounds (default: 5)</param>
@@ -22,19 +22,15 @@ public class ChatController(IAgentTeamService teamService, IAgentStoreService ag
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(request?.Message)) return BadRequest("Message cannot be empty");
+            if (string.IsNullOrWhiteSpace(request?.Message))
+                return BadRequest("Message cannot be empty");
 
-            if (string.IsNullOrWhiteSpace(request?.Team)) return BadRequest("Team cannot be empty");
+            var result = await agentService.DiscussAsync(request.Message, maxRounds, cancellationToken);
 
-            if (!agentStore.TeamExists(request.Team)) return NotFound($"Team '{request.Team}' not found");
-
-            var result =
-                await teamService.DiscussTopicAsync(request.Team, request.Message, maxRounds, cancellationToken);
             return Ok(new ChatResponse
             {
                 Result = result,
                 Topic = request.Message,
-                Team = request.Team,
                 MaxRounds = maxRounds,
                 Timestamp = DateTime.UtcNow
             });
@@ -46,53 +42,30 @@ public class ChatController(IAgentTeamService teamService, IAgentStoreService ag
     }
 
     /// <summary>
-    ///     Get all available teams
+    /// Get information about the finance team agents
     /// </summary>
-    /// <returns>List of available teams with their agents</returns>
-    [HttpGet("teams")]
-    public IActionResult GetTeams()
+    /// <returns>List of finance agents</returns>
+    [HttpGet("agents")]
+    public IActionResult GetAgents()
     {
         try
         {
-            var teams = agentStore.GetTeamNames().Select(teamName => new TeamInfo
-            {
-                Name = teamName,
-                Agents = agentStore.GetAgentNames(teamName).ToList(),
-                AgentCount = agentStore.GetAgentNames(teamName).Count()
-            }).ToList();
-
-            return Ok(teams);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = "An error occurred retrieving teams", details = ex.Message });
-        }
-    }
-
-    /// <summary>
-    ///     Get agents for a specific team
-    /// </summary>
-    /// <param name="teamName">Name of the team</param>
-    /// <returns>List of agents in the specified team</returns>
-    [HttpGet("teams/{teamName}")]
-    public IActionResult GetTeamAgents(string teamName)
-    {
-        try
-        {
-            if (!agentStore.TeamExists(teamName)) return NotFound($"Team '{teamName}' not found");
-
-            var agents = agentStore.GetTeamAgents(teamName);
+            var agents = agentService.GetAgents();
             var agentInfo = agents.Select(a => new AgentInfo
             {
                 Name = a.Name,
                 Description = a.Description
             }).ToList();
 
-            return Ok(agentInfo);
+            return Ok(new
+            {
+                AgentCount = agents.Length,
+                Agents = agentInfo
+            });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "An error occurred retrieving team agents", details = ex.Message });
+            return StatusCode(500, new { error = "An error occurred retrieving agents", details = ex.Message });
         }
     }
 }
@@ -103,7 +76,6 @@ public class ChatController(IAgentTeamService teamService, IAgentStoreService ag
 public class ChatRequest
 {
     public string Message { get; set; } = string.Empty;
-    public string Team { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -113,19 +85,8 @@ public class ChatResponse
 {
     public string Result { get; set; } = string.Empty;
     public string Topic { get; set; } = string.Empty;
-    public string Team { get; set; } = string.Empty;
     public int MaxRounds { get; set; }
     public DateTime Timestamp { get; set; }
-}
-
-/// <summary>
-///     Information about a team
-/// </summary>
-public class TeamInfo
-{
-    public string Name { get; set; } = string.Empty;
-    public List<string> Agents { get; set; } = [];
-    public int AgentCount { get; set; }
 }
 
 /// <summary>

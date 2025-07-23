@@ -22,4 +22,11 @@ public class DetailedOrchestrationMonitor
         Responses.Add(response);
         return ValueTask.CompletedTask;
     }
+
+    public class AgentResponse
+    {
+        public string AgentName { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+    }
 }

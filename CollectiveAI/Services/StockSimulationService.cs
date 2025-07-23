@@ -1,18 +1,18 @@
-﻿using System.Text.Json;
-using System.Globalization;
+﻿// Services/StockSimulationService.cs
+using System.Text.Json;
 
 namespace CollectiveAI.Services;
 
 public interface IStockSimulationService
 {
-    // Portfolio Management
-    Task<decimal> GetCashBalanceAsync(string portfolioId);
-    Task<Dictionary<string, Position>> GetPositionsAsync(string portfolioId);
-    Task<PortfolioSummary> GetPortfolioSummaryAsync(string portfolioId);
+    // Portfolio Management - No IDs needed
+    Task<decimal> GetCashBalanceAsync();
+    Task<Dictionary<string, Position>> GetPositionsAsync();
+    Task<PortfolioSummary> GetPortfolioSummaryAsync();
 
-    // Trading
-    Task<TradeResult> ExecuteTradeAsync(string portfolioId, TradeOrder order);
-    Task<List<Trade>> GetTradeHistoryAsync(string portfolioId, int days = 30);
+    // Trading - No portfolio ID needed
+    Task<TradeResult> ExecuteTradeAsync(TradeOrder order);
+    Task<List<Trade>> GetTradeHistoryAsync(int days = 30);
 
     // Market Data - All from real APIs
     Task<StockQuote> GetStockQuoteAsync(string symbol);
@@ -22,45 +22,49 @@ public interface IStockSimulationService
     Task<List<string>> SearchStocksAsync(string query);
 
     // Portfolio Analytics
-    Task<PerformanceMetrics> CalculatePerformanceAsync(string portfolioId, int days = 30);
-
-    // Initialization
-    Task InitializePortfolioAsync(string portfolioId, decimal initialCash = 10_000);
+    Task<PerformanceMetrics> CalculatePerformanceAsync(int days = 30);
 }
 
 public class StockSimulationService : IStockSimulationService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<StockSimulationService> _logger;
-    private readonly Dictionary<string, SimulatedPortfolio> _portfolios = new();
+    private readonly SimulatedPortfolio _portfolio;
 
     public StockSimulationService(HttpClient httpClient, ILogger<StockSimulationService> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
 
-        // Initialize with a default portfolio
-        InitializePortfolioAsync("default", 10_000).Wait();
+        // Initialize single portfolio with $10,000
+        _portfolio = new SimulatedPortfolio
+        {
+            InitialCash = 10_000,
+            CashBalance = 10_000,
+            Positions = new Dictionary<string, Position>(),
+            TradeHistory = new List<Trade>(),
+            CreatedAt = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow
+        };
+
+        _logger.LogInformation("Initialized portfolio with ${InitialCash:N2}", 10_000);
     }
 
-    public async Task<decimal> GetCashBalanceAsync(string portfolioId)
+    public async Task<decimal> GetCashBalanceAsync()
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
-        return portfolio.CashBalance;
+        return _portfolio.CashBalance;
     }
 
-    public async Task<Dictionary<string, Position>> GetPositionsAsync(string portfolioId)
+    public async Task<Dictionary<string, Position>> GetPositionsAsync()
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
-        return portfolio.Positions.ToDictionary(p => p.Key, p => p.Value);
+        return _portfolio.Positions.ToDictionary(p => p.Key, p => p.Value);
     }
 
-    public async Task<PortfolioSummary> GetPortfolioSummaryAsync(string portfolioId)
+    public async Task<PortfolioSummary> GetPortfolioSummaryAsync()
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
-        var positions = await GetPositionsAsync(portfolioId);
+        var positions = await GetPositionsAsync();
 
-        decimal totalValue = portfolio.CashBalance;
+        decimal totalValue = _portfolio.CashBalance;
         var positionValues = new Dictionary<string, decimal>();
 
         foreach (var position in positions.Values.Where(p => p.Quantity > 0))
@@ -84,22 +88,19 @@ public class StockSimulationService : IStockSimulationService
 
         return new PortfolioSummary
         {
-            PortfolioId = portfolioId,
             TotalValue = totalValue,
-            CashBalance = portfolio.CashBalance,
-            InitialValue = portfolio.InitialCash,
-            TotalReturn = totalValue - portfolio.InitialCash,
-            TotalReturnPercent = ((totalValue - portfolio.InitialCash) / portfolio.InitialCash) * 100,
+            CashBalance = _portfolio.CashBalance,
+            InitialValue = _portfolio.InitialCash,
+            TotalReturn = totalValue - _portfolio.InitialCash,
+            TotalReturnPercent = ((totalValue - _portfolio.InitialCash) / _portfolio.InitialCash) * 100,
             PositionCount = positions.Values.Count(p => p.Quantity > 0),
             PositionValues = positionValues,
             LastUpdated = DateTime.UtcNow
         };
     }
 
-    public async Task<TradeResult> ExecuteTradeAsync(string portfolioId, TradeOrder order)
+    public async Task<TradeResult> ExecuteTradeAsync(TradeOrder order)
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
-
         try
         {
             // Get current market price from Yahoo Finance
@@ -109,25 +110,25 @@ public class StockSimulationService : IStockSimulationService
 
             if (order.OrderType == OrderType.Buy)
             {
-                if (totalCost > portfolio.CashBalance)
+                if (totalCost > _portfolio.CashBalance)
                 {
                     return new TradeResult
                     {
                         Success = false,
-                        ErrorMessage = $"Insufficient funds. Required: ${totalCost:N2}, Available: ${portfolio.CashBalance:N2}",
+                        ErrorMessage = $"Insufficient funds. Required: ${totalCost:N2}, Available: ${_portfolio.CashBalance:N2}",
                         ExecutedQuantity = 0
                     };
                 }
 
-                portfolio.CashBalance -= totalCost;
+                _portfolio.CashBalance -= totalCost;
 
-                if (portfolio.Positions.ContainsKey(order.Symbol))
+                if (_portfolio.Positions.ContainsKey(order.Symbol))
                 {
-                    var existingPosition = portfolio.Positions[order.Symbol];
+                    var existingPosition = _portfolio.Positions[order.Symbol];
                     var newTotalQuantity = existingPosition.Quantity + order.Quantity;
                     var newTotalCost = (existingPosition.Quantity * existingPosition.AveragePrice) + totalCost;
 
-                    portfolio.Positions[order.Symbol] = new Position
+                    _portfolio.Positions[order.Symbol] = new Position
                     {
                         Symbol = order.Symbol,
                         Quantity = newTotalQuantity,
@@ -137,7 +138,7 @@ public class StockSimulationService : IStockSimulationService
                 }
                 else
                 {
-                    portfolio.Positions[order.Symbol] = new Position
+                    _portfolio.Positions[order.Symbol] = new Position
                     {
                         Symbol = order.Symbol,
                         Quantity = order.Quantity,
@@ -148,31 +149,30 @@ public class StockSimulationService : IStockSimulationService
             }
             else // Sell
             {
-                if (!portfolio.Positions.ContainsKey(order.Symbol) ||
-                    portfolio.Positions[order.Symbol].Quantity < order.Quantity)
+                if (!_portfolio.Positions.ContainsKey(order.Symbol) ||
+                    _portfolio.Positions[order.Symbol].Quantity < order.Quantity)
                 {
                     return new TradeResult
                     {
                         Success = false,
-                        ErrorMessage = $"Insufficient shares. Requested: {order.Quantity}, Available: {portfolio.Positions.GetValueOrDefault(order.Symbol)?.Quantity ?? 0}",
+                        ErrorMessage = $"Insufficient shares. Requested: {order.Quantity}, Available: {_portfolio.Positions.GetValueOrDefault(order.Symbol)?.Quantity ?? 0}",
                         ExecutedQuantity = 0
                     };
                 }
 
-                portfolio.CashBalance += totalCost;
-                var position = portfolio.Positions[order.Symbol];
+                _portfolio.CashBalance += totalCost;
+                var position = _portfolio.Positions[order.Symbol];
                 position.Quantity -= order.Quantity;
 
                 if (position.Quantity == 0)
                 {
-                    portfolio.Positions.Remove(order.Symbol);
+                    _portfolio.Positions.Remove(order.Symbol);
                 }
             }
 
             var trade = new Trade
             {
                 TradeId = Guid.NewGuid().ToString(),
-                PortfolioId = portfolioId,
                 Symbol = order.Symbol,
                 OrderType = order.OrderType,
                 Quantity = order.Quantity,
@@ -182,7 +182,7 @@ public class StockSimulationService : IStockSimulationService
                 Status = TradeStatus.Executed
             };
 
-            portfolio.TradeHistory.Add(trade);
+            _portfolio.TradeHistory.Add(trade);
 
             return new TradeResult
             {
@@ -195,7 +195,7 @@ public class StockSimulationService : IStockSimulationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing trade for portfolio {PortfolioId}", portfolioId);
+            _logger.LogError(ex, "Error executing trade");
             return new TradeResult
             {
                 Success = false,
@@ -205,12 +205,11 @@ public class StockSimulationService : IStockSimulationService
         }
     }
 
-    public async Task<List<Trade>> GetTradeHistoryAsync(string portfolioId, int days = 30)
+    public async Task<List<Trade>> GetTradeHistoryAsync(int days = 30)
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
         var cutoffDate = DateTime.UtcNow.AddDays(-days);
 
-        return portfolio.TradeHistory
+        return _portfolio.TradeHistory
             .Where(t => t.ExecutedAt >= cutoffDate)
             .OrderByDescending(t => t.ExecutedAt)
             .ToList();
@@ -227,7 +226,6 @@ public class StockSimulationService : IStockSimulationService
 
             var result = data.GetProperty("chart").GetProperty("result")[0];
             var meta = result.GetProperty("meta");
-            var quote = result.GetProperty("indicators").GetProperty("quote")[0];
 
             var currentPrice = meta.GetProperty("regularMarketPrice").GetDecimal();
             var previousClose = meta.GetProperty("previousClose").GetDecimal();
@@ -285,7 +283,6 @@ public class StockSimulationService : IStockSimulationService
     {
         try
         {
-            // Yahoo Finance news endpoint
             var url = "https://query1.finance.yahoo.com/v1/finance/trending/US";
             var response = await _httpClient.GetStringAsync(url);
             var data = JsonSerializer.Deserialize<JsonElement>(response);
@@ -373,18 +370,16 @@ public class StockSimulationService : IStockSimulationService
         }
     }
 
-    public async Task<PerformanceMetrics> CalculatePerformanceAsync(string portfolioId, int days = 30)
+    public async Task<PerformanceMetrics> CalculatePerformanceAsync(int days = 30)
     {
-        var portfolio = GetOrCreatePortfolio(portfolioId);
-        var trades = await GetTradeHistoryAsync(portfolioId, days);
-        var summary = await GetPortfolioSummaryAsync(portfolioId);
+        var trades = await GetTradeHistoryAsync(days);
+        var summary = await GetPortfolioSummaryAsync();
 
         var totalTradingVolume = trades.Sum(t => t.TotalValue);
         var totalTrades = trades.Count;
 
         return new PerformanceMetrics
         {
-            PortfolioId = portfolioId,
             Period = days,
             TotalReturn = summary.TotalReturn,
             TotalReturnPercent = summary.TotalReturnPercent,
@@ -393,37 +388,11 @@ public class StockSimulationService : IStockSimulationService
             LastUpdated = DateTime.UtcNow
         };
     }
-
-    public async Task InitializePortfolioAsync(string portfolioId, decimal initialCash = 10_000)
-    {
-        _portfolios[portfolioId] = new SimulatedPortfolio
-        {
-            PortfolioId = portfolioId,
-            InitialCash = initialCash,
-            CashBalance = initialCash,
-            Positions = new Dictionary<string, Position>(),
-            TradeHistory = new List<Trade>(),
-            CreatedAt = DateTime.UtcNow,
-            LastUpdated = DateTime.UtcNow
-        };
-
-        _logger.LogInformation("Initialized portfolio {PortfolioId} with ${InitialCash:N2}", portfolioId, initialCash);
-    }
-
-    private SimulatedPortfolio GetOrCreatePortfolio(string portfolioId)
-    {
-        if (!_portfolios.ContainsKey(portfolioId))
-        {
-            InitializePortfolioAsync(portfolioId).Wait();
-        }
-        return _portfolios[portfolioId];
-    }
 }
 
-// Data Models
+// Data Models - Simplified without portfolio IDs
 public class SimulatedPortfolio
 {
-    public string PortfolioId { get; set; } = string.Empty;
     public decimal InitialCash { get; set; }
     public decimal CashBalance { get; set; }
     public Dictionary<string, Position> Positions { get; set; } = new();
@@ -443,7 +412,6 @@ public class Position
 public class Trade
 {
     public string TradeId { get; set; } = string.Empty;
-    public string PortfolioId { get; set; } = string.Empty;
     public string Symbol { get; set; } = string.Empty;
     public OrderType OrderType { get; set; }
     public decimal Quantity { get; set; }
@@ -491,7 +459,6 @@ public class MarketNews
 
 public class PortfolioSummary
 {
-    public string PortfolioId { get; set; } = string.Empty;
     public decimal TotalValue { get; set; }
     public decimal CashBalance { get; set; }
     public decimal InitialValue { get; set; }
@@ -504,7 +471,6 @@ public class PortfolioSummary
 
 public class PerformanceMetrics
 {
-    public string PortfolioId { get; set; } = string.Empty;
     public int Period { get; set; }
     public decimal TotalReturn { get; set; }
     public decimal TotalReturnPercent { get; set; }

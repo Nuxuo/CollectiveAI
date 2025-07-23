@@ -5,27 +5,21 @@ namespace CollectiveAI.Controllers;
 
 [ApiController]
 [Route("api/trading")]
-public class TradingSimulationController : ControllerBase
+public class TradingSimulationController(
+    IStockSimulationService simulationService,
+    ILogger<TradingSimulationController> logger)
+    : ControllerBase
 {
-    private readonly IStockSimulationService _simulationService;
-    private readonly ILogger<TradingSimulationController> _logger;
-
-    public TradingSimulationController(IStockSimulationService simulationService, ILogger<TradingSimulationController> logger)
-    {
-        _simulationService = simulationService;
-        _logger = logger;
-    }
-
     /// <summary>
     /// Get current portfolio summary
     /// </summary>
-    [HttpGet("portfolio/{portfolioId?}")]
-    public async Task<IActionResult> GetPortfolio(string portfolioId = "default")
+    [HttpGet("portfolio")]
+    public async Task<IActionResult> GetPortfolio()
     {
         try
         {
-            var summary = await _simulationService.GetPortfolioSummaryAsync(portfolioId);
-            var positions = await _simulationService.GetPositionsAsync(portfolioId);
+            var summary = await simulationService.GetPortfolioSummaryAsync();
+            var positions = await simulationService.GetPositionsAsync();
 
             return Ok(new
             {
@@ -35,7 +29,7 @@ public class TradingSimulationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting portfolio {PortfolioId}", portfolioId);
+            logger.LogError(ex, "Error getting portfolio");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -43,17 +37,17 @@ public class TradingSimulationController : ControllerBase
     /// <summary>
     /// Get trade history
     /// </summary>
-    [HttpGet("history/{portfolioId?}")]
-    public async Task<IActionResult> GetTradeHistory(string portfolioId = "default", int days = 30)
+    [HttpGet("history")]
+    public async Task<IActionResult> GetTradeHistory(int days = 30)
     {
         try
         {
-            var trades = await _simulationService.GetTradeHistoryAsync(portfolioId, days);
+            var trades = await simulationService.GetTradeHistoryAsync(days);
             return Ok(trades);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting trade history for {PortfolioId}", portfolioId);
+            logger.LogError(ex, "Error getting trade history for");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -61,12 +55,12 @@ public class TradingSimulationController : ControllerBase
     /// <summary>
     /// Get portfolio performance metrics
     /// </summary>
-    [HttpGet("performance/{portfolioId?}")]
-    public async Task<IActionResult> GetPerformance(string portfolioId = "default", int days = 30)
+    [HttpGet("performance")]
+    public async Task<IActionResult> GetPerformance(int days = 30)
     {
         try
         {
-            var performance = await _simulationService.CalculatePerformanceAsync(portfolioId, days);
+            var performance = await simulationService.CalculatePerformanceAsync(days);
 
             return Ok(new
             {
@@ -75,7 +69,7 @@ public class TradingSimulationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting performance for {PortfolioId}", portfolioId);
+            logger.LogError(ex, "Error getting performance");
             return StatusCode(500, new { error = ex.Message });
         }
     }

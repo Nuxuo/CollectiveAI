@@ -1,12 +1,15 @@
-﻿using System.ComponentModel;
+﻿// Plugins/Finance/FinancePlugins.cs
+using System.ComponentModel;
 using Microsoft.SemanticKernel;
 using CollectiveAI.Services;
 
 namespace CollectiveAI.Plugins.Finance;
 
 // Market Discovery and Data Plugin - All from real APIs
-public class MarketDataPlugin(IStockSimulationService simulationService)
+public class MarketDataPlugin
 {
+    private IStockSimulationService SimulationService => ServiceLocator.GetRequiredService<IStockSimulationService>();
+
     [KernelFunction]
     [Description("Get current real-time stock quote for any symbol")]
     public async Task<string> GetStockQuote(
@@ -15,7 +18,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
         Console.WriteLine($"[MarketDataPlugin] Getting real-time quote for {symbol}");
         try
         {
-            var quote = await simulationService.GetStockQuoteAsync(symbol.ToUpper());
+            var quote = await SimulationService.GetStockQuoteAsync(symbol.ToUpper());
             Console.WriteLine($"[MarketDataPlugin] Retrieved quote: {quote.Symbol} at ${quote.Price:F2}");
             return $"{quote.Symbol}: ${quote.Price:F2} ({quote.Change:+0.00;-0.00}) {quote.ChangePercent:+0.0;-0.0}% | Volume: {quote.Volume:N0}";
         }
@@ -33,7 +36,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
         Console.WriteLine("[MarketDataPlugin] Fetching trending stocks");
         try
         {
-            var trending = await simulationService.GetTrendingStocksAsync();
+            var trending = await SimulationService.GetTrendingStocksAsync();
             Console.WriteLine($"[MarketDataPlugin] Found {trending.Count()} trending stocks");
 
             if (!trending.Any())
@@ -43,7 +46,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
             }
 
             var result = "📈 Currently Trending Stocks:\n";
-            var quotes = await simulationService.GetMultipleQuotesAsync(trending.Take(8).ToArray());
+            var quotes = await SimulationService.GetMultipleQuotesAsync(trending.Take(8).ToArray());
             Console.WriteLine($"[MarketDataPlugin] Retrieved quotes for {quotes.Count()} trending stocks");
 
             foreach (var quote in quotes)
@@ -69,7 +72,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
         Console.WriteLine($"[MarketDataPlugin] Searching stocks with query: '{query}'");
         try
         {
-            var symbols = await simulationService.SearchStocksAsync(query);
+            var symbols = await SimulationService.SearchStocksAsync(query);
             Console.WriteLine($"[MarketDataPlugin] Found {symbols.Count()} symbols for query '{query}'");
 
             if (!symbols.Any())
@@ -79,7 +82,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
             }
 
             var result = $"🔍 Search results for '{query}':\n";
-            var quotes = await simulationService.GetMultipleQuotesAsync(symbols.Take(5).ToArray());
+            var quotes = await SimulationService.GetMultipleQuotesAsync(symbols.Take(5).ToArray());
             Console.WriteLine($"[MarketDataPlugin] Retrieved quotes for {quotes.Count()} search results");
 
             foreach (var quote in quotes)
@@ -104,7 +107,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
         Console.WriteLine("[MarketDataPlugin] Fetching market news");
         try
         {
-            var news = await simulationService.GetMarketNewsAsync(5);
+            var news = await SimulationService.GetMarketNewsAsync(5);
             Console.WriteLine($"[MarketDataPlugin] Retrieved {news.Count()} news items");
 
             if (!news.Any())
@@ -140,7 +143,7 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
             var symbolArray = symbols.Split(',').Select(s => s.Trim().ToUpper()).ToArray();
             Console.WriteLine($"[MarketDataPlugin] Parsed {symbolArray.Length} symbols for comparison");
 
-            var quotes = await simulationService.GetMultipleQuotesAsync(symbolArray);
+            var quotes = await SimulationService.GetMultipleQuotesAsync(symbolArray);
             Console.WriteLine($"[MarketDataPlugin] Retrieved {quotes.Count()} quotes for comparison");
 
             if (!quotes.Any())
@@ -167,19 +170,18 @@ public class MarketDataPlugin(IStockSimulationService simulationService)
 }
 
 // Portfolio Management Plugin - Real positions and performance
-public class PortfolioPlugin(IStockSimulationService simulationService)
+public class PortfolioPlugin
 {
-    private const string DefaultPortfolioId = "default";
+    private IStockSimulationService SimulationService => ServiceLocator.GetRequiredService<IStockSimulationService>();
 
     [KernelFunction]
     [Description("Get current portfolio summary with all positions and real-time values")]
-    public async Task<string> GetPortfolioSummary(
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+    public async Task<string> GetPortfolioSummary()
     {
-        Console.WriteLine($"[PortfolioPlugin] Getting portfolio summary for: {portfolioId}");
+        Console.WriteLine("[PortfolioPlugin] Getting portfolio summary");
         try
         {
-            var summary = await simulationService.GetPortfolioSummaryAsync(portfolioId);
+            var summary = await SimulationService.GetPortfolioSummaryAsync();
             Console.WriteLine($"[PortfolioPlugin] Retrieved summary - Total Value: ${summary.TotalValue:N2}, Positions: {summary.PositionCount}");
 
             var result = $"💼 Portfolio Summary:\n";
@@ -216,13 +218,12 @@ public class PortfolioPlugin(IStockSimulationService simulationService)
 
     [KernelFunction]
     [Description("Get detailed information about current stock positions with real-time P&L")]
-    public async Task<string> GetPositionDetails(
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+    public async Task<string> GetPositionDetails()
     {
-        Console.WriteLine($"[PortfolioPlugin] Getting position details for: {portfolioId}");
+        Console.WriteLine("[PortfolioPlugin] Getting position details");
         try
         {
-            var positions = await simulationService.GetPositionsAsync(portfolioId);
+            var positions = await SimulationService.GetPositionsAsync();
             var activePositions = positions.Values.Where(p => p.Quantity > 0);
             Console.WriteLine($"[PortfolioPlugin] Found {activePositions.Count()} active positions");
 
@@ -236,7 +237,7 @@ public class PortfolioPlugin(IStockSimulationService simulationService)
             foreach (var position in activePositions.OrderBy(p => p.Symbol))
             {
                 Console.WriteLine($"[PortfolioPlugin] Processing position: {position.Symbol} ({position.Quantity} shares)");
-                var quote = await simulationService.GetStockQuoteAsync(position.Symbol);
+                var quote = await SimulationService.GetStockQuoteAsync(position.Symbol);
                 var currentValue = position.Quantity * quote.Price;
                 var costBasis = position.Quantity * position.AveragePrice;
                 var gainLoss = currentValue - costBasis;
@@ -261,14 +262,13 @@ public class PortfolioPlugin(IStockSimulationService simulationService)
     [KernelFunction]
     [Description("Get recent trading history and performance")]
     public async Task<string> GetTradingHistory(
-        [Description("Number of days to look back")] int days = 7,
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+        [Description("Number of days to look back")] int days = 7)
     {
-        Console.WriteLine($"[PortfolioPlugin] Getting trading history for {days} days, portfolio: {portfolioId}");
+        Console.WriteLine($"[PortfolioPlugin] Getting trading history for {days} days");
         try
         {
-            var trades = await simulationService.GetTradeHistoryAsync(portfolioId, days);
-            var performance = await simulationService.CalculatePerformanceAsync(portfolioId, days);
+            var trades = await SimulationService.GetTradeHistoryAsync(days);
+            var performance = await SimulationService.CalculatePerformanceAsync(days);
             Console.WriteLine($"[PortfolioPlugin] Retrieved {trades.Count()} trades, performance calculated");
 
             if (!trades.Any())
@@ -300,14 +300,13 @@ public class PortfolioPlugin(IStockSimulationService simulationService)
     [Description("Calculate position size recommendation based on current portfolio and risk")]
     public async Task<string> CalculatePositionSize(
         [Description("Stock symbol to analyze")] string symbol,
-        [Description("Risk percentage of portfolio to allocate (1-20)")] double riskPercent = 5.0,
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+        [Description("Risk percentage of portfolio to allocate (1-20)")] double riskPercent = 5.0)
     {
         Console.WriteLine($"[PortfolioPlugin] Calculating position size for {symbol} with {riskPercent}% risk");
         try
         {
-            var summary = await simulationService.GetPortfolioSummaryAsync(portfolioId);
-            var quote = await simulationService.GetStockQuoteAsync(symbol.ToUpper());
+            var summary = await SimulationService.GetPortfolioSummaryAsync();
+            var quote = await SimulationService.GetStockQuoteAsync(symbol.ToUpper());
             Console.WriteLine($"[PortfolioPlugin] Portfolio value: ${summary.TotalValue:N2}, Stock price: ${quote.Price:F2}");
 
             var riskAmount = summary.TotalValue * (decimal)(riskPercent / 100);
@@ -346,16 +345,15 @@ public class PortfolioPlugin(IStockSimulationService simulationService)
 }
 
 // Trading Execution Plugin - Real buy/sell orders
-public class TradingPlugin(IStockSimulationService simulationService)
+public class TradingPlugin
 {
-    private const string DefaultPortfolioId = "default";
+    private IStockSimulationService SimulationService => ServiceLocator.GetRequiredService<IStockSimulationService>();
 
     [KernelFunction]
     [Description("Execute a buy order for a stock at current market price")]
     public async Task<string> BuyStock(
         [Description("Stock ticker symbol")] string symbol,
-        [Description("Number of shares to buy")] decimal quantity,
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+        [Description("Number of shares to buy")] decimal quantity)
     {
         Console.WriteLine($"[TradingPlugin] Executing BUY order: {quantity} shares of {symbol}");
         try
@@ -367,7 +365,7 @@ public class TradingPlugin(IStockSimulationService simulationService)
                 Quantity = quantity
             };
 
-            var result = await simulationService.ExecuteTradeAsync(portfolioId, order);
+            var result = await SimulationService.ExecuteTradeAsync(order);
             Console.WriteLine($"[TradingPlugin] Buy order result - Success: {result.Success}");
 
             if (result.Success)
@@ -398,8 +396,7 @@ public class TradingPlugin(IStockSimulationService simulationService)
     [Description("Execute a sell order for a stock at current market price")]
     public async Task<string> SellStock(
         [Description("Stock ticker symbol")] string symbol,
-        [Description("Number of shares to sell")] decimal quantity,
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+        [Description("Number of shares to sell")] decimal quantity)
     {
         Console.WriteLine($"[TradingPlugin] Executing SELL order: {quantity} shares of {symbol}");
         try
@@ -411,7 +408,7 @@ public class TradingPlugin(IStockSimulationService simulationService)
                 Quantity = quantity
             };
 
-            var result = await simulationService.ExecuteTradeAsync(portfolioId, order);
+            var result = await SimulationService.ExecuteTradeAsync(order);
             Console.WriteLine($"[TradingPlugin] Sell order result - Success: {result.Success}");
 
             if (result.Success)
@@ -440,17 +437,16 @@ public class TradingPlugin(IStockSimulationService simulationService)
 
     [KernelFunction]
     [Description("Check if we can execute a trade before actually doing it")]
-    public async Task<string> CheckTradefeasibility(
+    public async Task<string> CheckTradeFeasibility(
         [Description("Stock symbol")] string symbol,
         [Description("Action: 'buy' or 'sell'")] string action,
-        [Description("Number of shares")] decimal quantity,
-        [Description("Portfolio ID (default: 'default')")] string portfolioId = DefaultPortfolioId)
+        [Description("Number of shares")] decimal quantity)
     {
         Console.WriteLine($"[TradingPlugin] Checking trade feasibility: {action.ToUpper()} {quantity} shares of {symbol}");
         try
         {
-            var summary = await simulationService.GetPortfolioSummaryAsync(portfolioId);
-            var quote = await simulationService.GetStockQuoteAsync(symbol.ToUpper());
+            var summary = await SimulationService.GetPortfolioSummaryAsync();
+            var quote = await SimulationService.GetStockQuoteAsync(symbol.ToUpper());
             var totalValue = quantity * quote.Price;
             Console.WriteLine($"[TradingPlugin] Trade value: ${totalValue:N2}, Available cash: ${summary.CashBalance:N2}");
 
@@ -478,7 +474,7 @@ public class TradingPlugin(IStockSimulationService simulationService)
             }
             else // sell
             {
-                var positions = await simulationService.GetPositionsAsync(portfolioId);
+                var positions = await SimulationService.GetPositionsAsync();
                 var availableShares = positions.GetValueOrDefault(symbol.ToUpper())?.Quantity ?? 0;
                 Console.WriteLine($"[TradingPlugin] Available shares for {symbol}: {availableShares}");
 
@@ -511,8 +507,10 @@ public class TradingPlugin(IStockSimulationService simulationService)
 }
 
 // Market Analysis Plugin - Simple analysis tools
-public class MarketAnalysisPlugin(IStockSimulationService simulationService)
+public class MarketAnalysisPlugin
 {
+    private IStockSimulationService SimulationService => ServiceLocator.GetRequiredService<IStockSimulationService>();
+
     [KernelFunction]
     [Description("Analyze a stock's current performance and momentum")]
     public async Task<string> AnalyzeStock(
@@ -521,7 +519,7 @@ public class MarketAnalysisPlugin(IStockSimulationService simulationService)
         Console.WriteLine($"[MarketAnalysisPlugin] Analyzing stock: {symbol}");
         try
         {
-            var quote = await simulationService.GetStockQuoteAsync(symbol.ToUpper());
+            var quote = await SimulationService.GetStockQuoteAsync(symbol.ToUpper());
             Console.WriteLine($"[MarketAnalysisPlugin] Retrieved quote for analysis: {quote.Symbol} @ ${quote.Price:F2}");
 
             var momentum = Math.Abs(quote.ChangePercent) > 3 ? "High" :
@@ -583,8 +581,8 @@ public class MarketAnalysisPlugin(IStockSimulationService simulationService)
         Console.WriteLine("[MarketAnalysisPlugin] Getting market overview");
         try
         {
-            var trending = await simulationService.GetTrendingStocksAsync();
-            var news = await simulationService.GetMarketNewsAsync(3);
+            var trending = await SimulationService.GetTrendingStocksAsync();
+            var news = await SimulationService.GetMarketNewsAsync(3);
             Console.WriteLine($"[MarketAnalysisPlugin] Retrieved {trending.Count()} trending stocks and {news.Count()} news items");
 
             if (!trending.Any())
@@ -593,7 +591,7 @@ public class MarketAnalysisPlugin(IStockSimulationService simulationService)
                 return "Unable to get market data at this time.";
             }
 
-            var quotes = await simulationService.GetMultipleQuotesAsync(trending.Take(5).ToArray());
+            var quotes = await SimulationService.GetMultipleQuotesAsync(trending.Take(5).ToArray());
             Console.WriteLine($"[MarketAnalysisPlugin] Analyzing {quotes.Count()} quotes for market sentiment");
 
             var gainers = quotes.Count(q => q.ChangePercent > 0);

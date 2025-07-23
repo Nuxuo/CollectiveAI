@@ -1,4 +1,3 @@
-using CollectiveAI.Extensions;
 using CollectiveAI.Services;
 using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
@@ -11,9 +10,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "CollectiveAI Real Trading API",
+        Title = "CollectiveAI Finance Trading API",
         Version = "v1",
-        Description = "AI Team Discussions with Real-Time Stock Trading"
+        Description = "AI Finance Team with Real-Time Stock Trading"
     });
 });
 
@@ -49,8 +48,9 @@ builder.Services.AddSingleton<IStockSimulationService>(sp =>
     return new StockSimulationService(httpClient, logger);
 });
 
-// Register other services
-builder.Services.AddCollectiveAI();
+// Register the Agent Service as Singleton
+builder.Services.AddSingleton<IAgentService, AgentService>();
+
 builder.Services.AddMemoryCache();
 
 builder.Services.AddLogging(logging =>
@@ -72,13 +72,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Initialize ServiceLocator
+ServiceLocator.Initialize(app.Services);
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CollectiveAI Real Trading API v1");
-        c.RoutePrefix = string.Empty;
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CollectiveAI Finance Trading API v1");
     });
 }
 
@@ -90,6 +92,9 @@ if (app.Environment.IsDevelopment())
 app.UseAuthorization();
 app.MapControllers();
 
-await app.Services.InitializeAgentsAsync();
+// Initialize agents on startup
+var agentService = app.Services.GetRequiredService<IAgentService>();
+var agents = agentService.GetAgents();
+Console.WriteLine($"Initialized {agents.Length} finance agents: {string.Join(", ", agents.Select(a => a.Name))}");
 
 app.Run();
