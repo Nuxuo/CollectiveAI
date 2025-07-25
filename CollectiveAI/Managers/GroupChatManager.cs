@@ -70,17 +70,20 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
                         ✅ DECISIONS COMPLETED: Any trading decisions have been made and executed (or explicitly deferred)
                         ✅ NATURAL CONCLUSION: The discussion has reached a logical endpoint where no immediate follow-up is expected
                         ✅ GREETING/STATUS COMPLETE: Casual check-ins or status updates have been shared
+                        ✅ MEETING COORDINATION COMPLETE: Meeting assessments completed or meetings scheduled as requested
                         
                         Examples of when to CONTINUE (False):
                         - "What's trending in the market?" (needs Market Analyst response)
                         - "Should we buy AAPL?" (needs team discussion and decision)
                         - "Execute that trade we discussed" (needs execution confirmation)
+                        - "Should we schedule a meeting about this?" (needs MeetingCoordinator assessment)
                         
                         Examples of when to END (True):
                         - "How are you today?" + responses received
                         - "What's our cash balance?" + answer provided
                         - Trade executed with confirmation provided
                         - Team agreed to hold all positions today
+                        - Meeting assessment completed or meeting scheduled
                         
                         If the user's request has been appropriately addressed and no further action or discussion is immediately needed, respond with True.
                         If the conversation is still developing or awaiting responses, respond with False.
@@ -114,6 +117,9 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
                         
                         For TRADE EXECUTION ("Buy 100 shares", "Execute that trade"):
                         → Choose TradingExecutor (actual trade execution)
+                        
+                        For MEETING COORDINATION ("Should we schedule a meeting?", "Do we need to discuss this formally?", "Let's plan a meeting"):
+                        → Choose MeetingCoordinator (meeting assessment and scheduling)
                         
                         For COLLABORATIVE DECISIONS (complex trading decisions):
                         → Start with most relevant expert, then let conversation flow naturally
@@ -150,6 +156,12 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
                         💰 FINANCIAL IMPACT: How decisions affected portfolio value and risk
                         📋 NEXT STEPS: What to monitor or consider going forward
                         
+                        FOR MEETING COORDINATION:
+                        📅 MEETING ASSESSMENT: Whether team meetings were deemed necessary based on conversation complexity
+                        🎯 MEETINGS SCHEDULED: Any meetings planned with agenda and timing details
+                        💬 COORDINATION DECISIONS: How the team chose to handle complex discussions (meeting vs. continued chat)
+                        📋 FOLLOW-UP: Any meeting-related action items or scheduling needs
+                        
                         FOR INFORMATION REQUESTS:
                         📋 INFORMATION PROVIDED: Summarize the key data, analysis, or answers given
                         🔍 KEY INSIGHTS: Important takeaways or findings
@@ -162,7 +174,7 @@ public sealed class AiGroupChatManager(string topic, IChatCompletionService chat
                         
                         Keep the tone conversational and executive-appropriate. Include specific numbers when available, but don't force trading activity if the conversation was casual or informational. If no decisions were made, that's perfectly fine - just summarize what was discussed and learned.
                         
-                        The goal is to provide a clear record of what happened, whether it was a simple status check, complex trading analysis, or anything in between.
+                        The goal is to provide a clear record of what happened, whether it was a simple status check, complex trading analysis, meeting coordination, or anything in between.
                     """;
         }
     }

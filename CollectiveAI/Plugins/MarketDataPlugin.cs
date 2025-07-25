@@ -506,6 +506,238 @@ public class TradingPlugin
     }
 }
 
+public class MeetingCoordinatorPlugin
+{
+    private IStockSimulationService SimulationService => ServiceLocator.GetRequiredService<IStockSimulationService>();
+    private IBackgroundJobService BackgroundJobService => ServiceLocator.GetRequiredService<IBackgroundJobService>();
+
+    [KernelFunction]
+    [Description("Assess if current market or portfolio conditions warrant scheduling a team meeting")]
+    public async Task<string> AssessMeetingNeed(
+        [Description("Specific topic or concern to evaluate (optional)")] string? topic = null)
+    {
+        Console.WriteLine($"[MeetingCoordinatorPlugin] Assessing meeting need for topic: {topic ?? "general conditions"}");
+        try
+        {
+            var portfolio = await SimulationService.GetPortfolioSummaryAsync();
+            var performance = await SimulationService.CalculatePerformanceAsync(1); // Last day
+            var weeklyPerformance = await SimulationService.CalculatePerformanceAsync(7); // Last week
+
+            Console.WriteLine($"[MeetingCoordinatorPlugin] Portfolio analysis - Daily: {performance.TotalReturnPercent:F1}%, Weekly: {weeklyPerformance.TotalReturnPercent:F1}%");
+
+            var triggers = new List<string>();
+            var urgencyLevel = "LOW";
+
+            // Check portfolio-related triggers
+            if (Math.Abs(performance.TotalReturnPercent) > 5)
+            {
+                triggers.Add($"Significant daily portfolio movement: {performance.TotalReturnPercent:+0.0;-0.0}%");
+                urgencyLevel = "HIGH";
+            }
+
+            if (Math.Abs(weeklyPerformance.TotalReturnPercent) > 10)
+            {
+                triggers.Add($"Major weekly portfolio change: {weeklyPerformance.TotalReturnPercent:+0.0;-0.0}%");
+                urgencyLevel = "HIGH";
+            }
+
+            // Check concentration risk
+            if (portfolio.PositionValues.Any())
+            {
+                var maxPosition = portfolio.PositionValues.Values.Max();
+                var maxPositionPercent = maxPosition / portfolio.TotalValue * 100;
+                if (maxPositionPercent > 20)
+                {
+                    triggers.Add($"Concentration risk: {maxPositionPercent:F1}% in single position");
+                    if (urgencyLevel == "LOW") urgencyLevel = "MEDIUM";
+                }
+            }
+
+            // Check cash levels
+            var cashPercent = portfolio.CashBalance / portfolio.TotalValue * 100;
+            if (cashPercent > 50)
+            {
+                triggers.Add($"High cash allocation: {cashPercent:F1}% - deployment strategy needed");
+                if (urgencyLevel == "LOW") urgencyLevel = "MEDIUM";
+            }
+
+            // Check market conditions
+            var trending = await SimulationService.GetTrendingStocksAsync();
+            if (trending.Any())
+            {
+                var quotes = await SimulationService.GetMultipleQuotesAsync(trending.Take(5).ToArray());
+                var avgVolatility = quotes.Average(q => Math.Abs(q.ChangePercent));
+
+                if (avgVolatility > 3)
+                {
+                    triggers.Add($"High market volatility detected: {avgVolatility:F1}% average movement");
+                    if (urgencyLevel == "LOW") urgencyLevel = "MEDIUM";
+                }
+            }
+
+            Console.WriteLine($"[MeetingCoordinatorPlugin] Assessment complete - {triggers.Count} triggers found, urgency: {urgencyLevel}");
+
+            var result = $"📋 Meeting Need Assessment:\n";
+            result += $"Portfolio Value: ${portfolio.TotalValue:N2}\n";
+            result += $"Daily Change: {performance.TotalReturnPercent:+0.0;-0.0}%\n";
+            result += $"Weekly Change: {weeklyPerformance.TotalReturnPercent:+0.0;-0.0}%\n";
+            result += $"Cash Level: {cashPercent:F1}%\n\n";
+
+            if (triggers.Any())
+            {
+                result += $"🚨 MEETING TRIGGERS IDENTIFIED ({urgencyLevel} PRIORITY):\n";
+                foreach (var trigger in triggers)
+                {
+                    result += $"• {trigger}\n";
+                }
+                result += $"\n✅ RECOMMENDATION: Schedule team meeting to address these issues";
+            }
+            else
+            {
+                result += $"✅ NO IMMEDIATE MEETING TRIGGERS\n";
+                result += $"Current conditions don't warrant a special team meeting.\n";
+                result += $"Continue with regular daily discussions.";
+            }
+
+            if (!string.IsNullOrEmpty(topic))
+            {
+                result += $"\n\n📝 Specific Topic: {topic}\n";
+                result += $"Additional context should be considered when making final meeting decision.";
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MeetingCoordinatorPlugin] ERROR assessing meeting need: {ex.Message}");
+            return $"Error assessing meeting need: {ex.Message}";
+        }
+    }
+
+    [KernelFunction]
+    [Description("Schedule a team meeting with specific agenda for a meaningful topic")]
+    public async Task<string> ScheduleTeamMeeting(
+        [Description("Clear agenda or topic for the meeting")] string agenda,
+        [Description("Scheduled date and time (format: 'YYYY-MM-DD HH:mm')")] string scheduledDateTime,
+        [Description("Timezone (optional, defaults to Eastern)")] string? timeZone = null)
+    {
+        Console.WriteLine($"[MeetingCoordinatorPlugin] Scheduling team meeting - Agenda: {agenda}, Time: {scheduledDateTime}");
+        try
+        {
+            // Validate the agenda has substance
+            if (string.IsNullOrWhiteSpace(agenda) || agenda.Length < 10)
+            {
+                Console.WriteLine("[MeetingCoordinatorPlugin] Agenda too short or empty - rejecting meeting request");
+                return "❌ MEETING NOT SCHEDULED: Agenda must be specific and meaningful (at least 10 characters). Provide a clear purpose for the meeting.";
+            }
+
+            // Parse the datetime
+            if (!DateTime.TryParse(scheduledDateTime, out var meetingTime))
+            {
+                Console.WriteLine($"[MeetingCoordinatorPlugin] Invalid datetime format: {scheduledDateTime}");
+                return "❌ MEETING NOT SCHEDULED: Invalid date/time format. Use 'YYYY-MM-DD HH:mm' format.";
+            }
+
+            // Check if meeting is during critical market hours (9:30-10:30 AM, 3:30-4:00 PM ET)
+            var easternTz = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            var meetingTimeEt = TimeZoneInfo.ConvertTime(meetingTime, easternTz);
+            var timeOnly = meetingTimeEt.TimeOfDay;
+
+            if ((timeOnly >= new TimeSpan(9, 30, 0) && timeOnly <= new TimeSpan(10, 30, 0)) ||
+                (timeOnly >= new TimeSpan(15, 30, 0) && timeOnly <= new TimeSpan(16, 0, 0)))
+            {
+                Console.WriteLine($"[MeetingCoordinatorPlugin] Meeting scheduled during critical market hours: {meetingTimeEt:HH:mm} ET");
+                return $"⚠️ WARNING: Meeting scheduled during critical market hours ({meetingTimeEt:HH:mm} ET). Consider rescheduling to avoid market distractions.";
+            }
+
+            // Determine timezone
+            TimeZoneInfo? targetTimeZone = null;
+            if (!string.IsNullOrEmpty(timeZone))
+            {
+                try
+                {
+                    targetTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+                }
+                catch
+                {
+                    Console.WriteLine($"[MeetingCoordinatorPlugin] Invalid timezone: {timeZone}, using default Eastern");
+                }
+            }
+
+            // Create enhanced agenda with current context
+            var contextualAgenda = await CreateContextualAgenda(agenda);
+
+            // Schedule the meeting
+            var jobId = BackgroundJobService.ScheduleCustomMarketDiscussion(contextualAgenda, meetingTime, targetTimeZone);
+
+            Console.WriteLine($"[MeetingCoordinatorPlugin] Meeting scheduled successfully - Job ID: {jobId}");
+
+            var result = $"✅ TEAM MEETING SCHEDULED\n\n";
+            result += $"📅 Date & Time: {meetingTime:yyyy-MM-dd HH:mm}\n";
+            result += $"🌍 Timezone: {(targetTimeZone?.DisplayName ?? "Eastern Standard Time")}\n";
+            result += $"📋 Agenda: {agenda}\n";
+            result += $"🔧 Job ID: {jobId}\n\n";
+            result += $"📧 Meeting notification will be sent to all team members at the scheduled time.\n";
+            result += $"💡 Tip: Ensure all relevant data and analysis is prepared before the meeting.";
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MeetingCoordinatorPlugin] ERROR scheduling meeting: {ex.Message}");
+            return $"❌ Error scheduling meeting: {ex.Message}";
+        }
+    }
+
+    [KernelFunction]
+    [Description("Get upcoming scheduled meetings and their agendas")]
+    public string GetUpcomingMeetings()
+    {
+        Console.WriteLine("[MeetingCoordinatorPlugin] Retrieving upcoming meetings");
+
+        // Note: In a real implementation, you'd query the job scheduler for upcoming meetings
+        // For now, we'll return a placeholder that indicates where this info would come from
+
+        var result = "📅 UPCOMING MEETINGS:\n\n";
+        result += "ℹ️ Meeting information would be retrieved from the job scheduler.\n";
+        result += "This would include:\n";
+        result += "• Meeting date and time\n";
+        result += "• Agenda details\n";
+        result += "• Job ID for cancellation if needed\n";
+        result += "• Timezone information\n\n";
+        result += "💡 Integration with Hangfire dashboard recommended for full meeting management.";
+
+        Console.WriteLine("[MeetingCoordinatorPlugin] Returned meeting info placeholder");
+        return result;
+    }
+
+    private async Task<string> CreateContextualAgenda(string baseAgenda)
+    {
+        Console.WriteLine("[MeetingCoordinatorPlugin] Creating contextual agenda");
+        try
+        {
+            var portfolio = await SimulationService.GetPortfolioSummaryAsync();
+            var performance = await SimulationService.CalculatePerformanceAsync(1);
+
+            var contextualAgenda = $"{baseAgenda}\n\n";
+            contextualAgenda += $"CURRENT CONTEXT:\n";
+            contextualAgenda += $"• Portfolio Value: ${portfolio.TotalValue:N2}\n";
+            contextualAgenda += $"• Daily Performance: {performance.TotalReturnPercent:+0.0;-0.0}%\n";
+            contextualAgenda += $"• Cash Available: ${portfolio.CashBalance:N2}\n";
+            contextualAgenda += $"• Active Positions: {portfolio.PositionCount}\n";
+            contextualAgenda += $"• Meeting Scheduled: {DateTime.Now:yyyy-MM-dd HH:mm}";
+
+            Console.WriteLine("[MeetingCoordinatorPlugin] Contextual agenda created successfully");
+            return contextualAgenda;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MeetingCoordinatorPlugin] ERROR creating contextual agenda: {ex.Message}");
+            return baseAgenda; // Fall back to base agenda if context fails
+        }
+    }
+}
+
 // Market Analysis Plugin - Simple analysis tools
 public class MarketAnalysisPlugin
 {

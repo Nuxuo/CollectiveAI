@@ -1,3 +1,4 @@
+﻿using CollectiveAI.Configurations;
 using CollectiveAI.Services;
 using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
@@ -50,8 +51,11 @@ builder.Services.AddSingleton<IStockSimulationService>(sp =>
 
 // Register the Agent Service as Singleton
 builder.Services.AddSingleton<IAgentService, AgentService>();
+builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 
 builder.Services.AddMemoryCache();
+
+builder.Services.AddHangfireConfiguration(builder.Configuration);
 
 builder.Services.AddLogging(logging =>
 {
@@ -89,6 +93,8 @@ app.UseHttpsRedirection();
 if (app.Environment.IsDevelopment())
     app.UseCors("AllowAll");
 
+app.UseHangfireDashboardWithAuth(app.Environment);
+
 app.UseAuthorization();
 app.MapControllers();
 
@@ -96,5 +102,20 @@ app.MapControllers();
 var agentService = app.Services.GetRequiredService<IAgentService>();
 var agents = agentService.GetAgents();
 Console.WriteLine($"Initialized {agents.Length} finance agents: {string.Join(", ", agents.Select(a => a.Name))}");
+
+try
+{
+    using var scope = app.Services.CreateScope();
+    var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
+
+    jobService.ScheduleDailyMarketDiscussion();
+
+    Console.WriteLine("✅ Daily market discussion job scheduled successfully");
+    Console.WriteLine("📊 Hangfire Dashboard available at: /hangfire");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"⚠️ Failed to schedule daily job: {ex.Message}");
+}
 
 app.Run();
